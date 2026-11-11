@@ -26,24 +26,27 @@ end
 function [costring, coefficientside] = search(direction, string, startingindex) %searches ahead or behind to store the coefficient
     sign = ""; % determine the sign in front
     costring = "";
+   
     if direction == '-'
-        increment = -1;
+        increment = -1; %if moving left start at the index before j
     else
-        increment = 1;
+        increment = 1;%if moving right start at the index after j
     end
+    
+    
     startingindex = startingindex + increment;
-    fprintf('Starting index\n')
-    disp(startingindex)
-    fprintf('string at starting index\n')
-    disp(string(startingindex))
-    while string(startingindex) ~= '+' && string(startingindex) ~= '*' && string(startingindex) ~= '-' && string(startingindex) ~= '/' && string(startingindex) ~= '^' && string(startingindex)~= '(' && string(startingindex) ~= ')'%find the coefficient
+    if direction == '+' && startingindex ~= 2 % if the negative is on the other side add it into the right coef
+        if string(startingindex - 2) == '-'
+            sign = '-';
+        end
+    end
+    while string(startingindex) ~= '+' && string(startingindex) ~= '*' && string(startingindex) ~= '-' && string(startingindex) ~= '/' && string(startingindex) ~= '^' && string(startingindex)~= '(' && string(startingindex) ~= ')' && ~isletter(string(startingindex)) %find the coefficient
         if direction == '-'
             costring = string(startingindex)+ costring;
         else
             costring = costring + (string(startingindex));
         end
         if startingindex~=1 && startingindex ~=strlength(string)
-            fprintf('Activated!')
             startingindex = startingindex + increment;
         else
             break
@@ -52,15 +55,13 @@ function [costring, coefficientside] = search(direction, string, startingindex) 
             sign = '-';
         end
     end
-    if strcmp(costring, '-') || strcmp(costring, '') %empty coefficient edge case
+    if strcmp(costring, '') %empty coefficient edge case
         costring = costring + '1';
         coefficientside = '-';
     else
         
         coefficientside = "+";
     end
-    fprintf('coefficient is')
-    disp(costring)
     costring = str2double(sign+costring);
 end
    
@@ -72,7 +73,7 @@ function[struct] = findco(struct,string,startindex,type)%look left and right
             [struct.(type)] = search('-',string,startindex);
         else
             [struct.(type), codirection] = search('+',string,startindex); %return value from the left or right
-            if strcmp(codirection,'-') 
+            if strcmp(codirection,'-') && struct.(type) ~= -1 %struct.type will only be negative if there was a negative side on the left meaning no coefficient besides -1
                 [struct.(type)] = search('-',string,startindex);
             end
         end
@@ -84,6 +85,7 @@ structinposition = []; % label of structure at that position
 operators = []; %returns the operators between the values
 substring = "";
 structcount = 1;
+struct(structcount) = structbuilder();
 equation = strrep(equation,'pi',num2str(pi)); %very low level built in program to replace pi with actual value
 equation = strrep(equation, ' ', '');
 elist = strfind(equation, 'e'); %All indexes of e
@@ -105,8 +107,8 @@ end
 disp(class(substring))
 for i = 1:1:strlength(equation)
     if equation(i) == "/" && exponential == true || equation(i) == "*" && exponential == true
-        leftside = search("-",equation,findposition(jlist,i)); %find the left of the operator
-        rightside = search("+",equation,findposition(jlist,i));%find the value right of the operator
+        leftside = search("-",equation,i); %find the left of the operator
+        rightside = search("+",equation,i);%find the value right of the operator
         if equation(i) == "/" %divide
             struct(structcount).theta = leftside/rightside;
         elseif equation(i) == "*" %multiply
@@ -126,28 +128,22 @@ for i = 1:1:strlength(equation)
         continue
     else
         if contains(substring, 'e') % collect the magnitude and theta
-            fprintf('substring is %s', substring)
-            struct(structcount) = structbuilder();
+            if struct(structcount).theta == 0
+                struct(structcount) = structbuilder();
+                struct(structcount) = findco(struct(structcount), equation, findposition(jlist,i),"theta");
+            end
             struct(structcount).type = 'exponential';
             [substring,structinposition,positions,operators]=modplacements(elist,i,structinposition,positions,operators,structcount,equation);
             struct(structcount) = findco(struct(structcount), equation, findposition(elist,i),"mag");
-            fprintf('the new struct is')
-            disp(struct(structcount))
-            struct(structcount) = findco(struct(structcount), equation, findposition(jlist,i),"theta");
-            fprintf('the new new struc is')
-            disp(struct(structcount))
-            if isempty(struct(structcount).theta)
-                struct(structcount) = findco(struct(structcount), equation, findposition(jlist,i),"theta");
-            end
             structcount = structcount +1;
         elseif contains(substring, 'j') % collect the imaginary component
-            fprintf('substring is %s', substring)
             struct(structcount) = structbuilder();
             struct(structcount).type = 'rectangular';
             [substring,structinposition,positions,operators]=modplacements(jlist,i,structinposition,positions,operators,structcount,equation);
             struct(structcount) =findco(struct(structcount),equation, findposition(jlist,i),"imag");
             struct(structcount) = convert(struct(structcount));
             structcount = structcount +1;
+            struct(structcount) = structbuilder();
         else % collect the real component
 
         end
