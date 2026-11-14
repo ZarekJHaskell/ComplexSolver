@@ -149,8 +149,8 @@ for i = 1:1:strlength(equation) %big loop collects all data filln up structs
         end
         struct(structcount).priority = priority; %assign each struct priority based on parenthesis
         if contains(substring, 'e') % collect the magnitude and theta
+            struct(structcount+1) = structbuilder();
             if struct(structcount).theta == 0
-                struct(structcount+1) = structbuilder();
                 struct(structcount) = findco(struct(structcount), equation, findposition(jlist,i),"theta");
             end
             struct(structcount).type = 'exponential';
