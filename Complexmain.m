@@ -7,6 +7,8 @@ function [struct] = structbuilder() %fields for each struct
     struct.real = 0; %real
     struct.theta = 0; %angle of exponential form
     struct.mag = 0; %magnitude of exponential form
+    struct.priority = 0;
+    struct.sub = false;
 end
 function [struct] = convert(struct) %beginning of the function junction 
     if strcmp(struct.type,  'rectangular')
@@ -32,9 +34,10 @@ function [costring, coefficientside] = search(direction, string, startingindex) 
     else
         increment = 1;%if moving right start at the index after j
     end
-    
-    
     startingindex = startingindex + increment;
+    while string(startingindex) == ')'
+        startingindex= startingindex + increment;
+    end
     if direction == '+' && startingindex ~= 2 % if the negative is on the other side add it into the right coef
         if string(startingindex - 2) == '-'
             sign = '-';
@@ -42,9 +45,9 @@ function [costring, coefficientside] = search(direction, string, startingindex) 
     end
     while string(startingindex) ~= '+' && string(startingindex) ~= '*' && string(startingindex) ~= '-' && string(startingindex) ~= '/' && string(startingindex) ~= '^' && string(startingindex)~= '(' && string(startingindex) ~= ')' && ~isletter(string(startingindex)) %find the coefficient
         if direction == '-'
-            costring = string(startingindex)+ costring;
+            costring = string(startingindex)+ costring; %dynamic string collection
         else
-            costring = costring + (string(startingindex));
+            costring = costring + (string(startingindex)); %store in the positive direction
         end
         if startingindex~=1 && startingindex ~=strlength(string)
             startingindex = startingindex + increment;
@@ -80,11 +83,15 @@ function[struct] = findco(struct,string,startindex,type)%look left and right
 end
 exponential = false;
 equation = input('Input Equation!: ','s'); %user input string
+if strcmp(equation(1), '-')
+    equation = insertBefore(equation,1,'0j');
+end
 positions = []; %position within the string
 structinposition = []; % label of structure at that position
-operators = []; %returns the operators between the values
+operators = strings(0); %returns the operators between the values
 substring = "";
 structcount = 1;
+priority = 0; %keeps track of values inside of parenthesis
 struct(structcount) = structbuilder();
 equation = strrep(equation,'pi',num2str(pi)); %very low level built in program to replace pi with actual value
 equation = strrep(equation, ' ', '');
@@ -101,11 +108,16 @@ end
 function[substring,structinposition,positions,operators] = modplacements(list,i,structinposition,positions,operators,structcount, equation) %adjust all of the position arrays for Structs and operators in the equation string
     structinposition(structcount) = structcount;
     positions(structcount) = findposition(list,i);
-    operators(structcount) = equation(i);
+    if i ~= strlength(equation)
+        operators(end+1) = equation(i);
+    end
     substring =""; % reset substring
 end
-disp(class(substring))
-for i = 1:1:strlength(equation)
+equation = append(equation,'+'); %helps the loop create a substring for the last term
+for i = 1:1:strlength(equation) %big loop collects all data filln up structs
+    if equation(i) == '(' && exponential == false %tracks
+        priority = priority +1;
+    end
     if equation(i) == "/" && exponential == true || equation(i) == "*" && exponential == true
         leftside = search("-",equation,i); %find the left of the operator
         rightside = search("+",equation,i);%find the value right of the operator
@@ -119,6 +131,9 @@ for i = 1:1:strlength(equation)
         if equation(i) == 'e' %flip on the exponential boolean
             exponential = true;
         elseif equation(i) == ")"
+            if exponential ~= true
+                priority = priority-1; %last value inside parenthesis or not inside parenthesis
+            end
             exponential = false; %flip it off
         end
     elseif equation(i) == "-" && i == 1
@@ -127,9 +142,16 @@ for i = 1:1:strlength(equation)
         substring = substring + '-';
         continue
     else
+        if i ~= strlength(equation) && strcmp(equation(i),'-')
+            if strcmp(equation(i+1),'(')
+                
+                struct(structcount).sub = true; %helps clear up an error with subtracting an expression in parenthesis
+            end
+        end
+        struct(structcount).priority = priority; %assign each struct priority based on parenthesis
         if contains(substring, 'e') % collect the magnitude and theta
+            struct(structcount+1) = structbuilder();
             if struct(structcount).theta == 0
-                struct(structcount) = structbuilder();
                 struct(structcount) = findco(struct(structcount), equation, findposition(jlist,i),"theta");
             end
             struct(structcount).type = 'exponential';
@@ -137,7 +159,6 @@ for i = 1:1:strlength(equation)
             struct(structcount) = findco(struct(structcount), equation, findposition(elist,i),"mag");
             structcount = structcount +1;
         elseif contains(substring, 'j') % collect the imaginary component
-            struct(structcount) = structbuilder();
             struct(structcount).type = 'rectangular';
             [substring,structinposition,positions,operators]=modplacements(jlist,i,structinposition,positions,operators,structcount,equation);
             struct(structcount) =findco(struct(structcount),equation, findposition(jlist,i),"imag");
@@ -145,8 +166,84 @@ for i = 1:1:strlength(equation)
             structcount = structcount +1;
             struct(structcount) = structbuilder();
         else % collect the real component
-
+            struct(structcount+1) = structbuilder();
+            struct(structcount).type = 'rectangular';
+            struct(structcount).real = search('-', equation,i);
+            struct(structcount) = convert(struct(structcount));
+            %function[substring,structinposition,positions,operators] = modplacements(list,i,structinposition,positions,operators,structcount, equation)
+            substring = "";
+            structinposition(structcount) = structcount;
+            if i ~= strlength(equation)
+                operators(end+1) = equation(i);
+            end
+            %disp(struct(structcount))
+            %disp(structinposition)
+            structcount=structcount+1;
         end
     end
 end
+oper = ['/','*','+','-'];
+currentpriority = 0;
+for i = 1:1:structcount-1
+    if struct(i).priority >  currentpriority
+        currentpriority = struct(i).priority;
+    end
+end
+function[structtwo] = simplify(operator, struct, structtwo)
+    if strcmp(operator, '*') || strcmp(operator, '/')
+        if ~strcmp(struct.type , 'exponential')
+            struct=convert(struct);
+        end
+        if ~strcmp(structtwo.type , 'exponential')
+            structtwo = convert(structtwo);
+        end
+        if strcmp(operator,'*') 
+            structtwo.theta = struct.theta + structtwo.theta;
+            structtwo.mag = struct.mag * structtwo.mag;
+        else
+            structtwo.theta = struct.theta - structtwo.theta;
+            structtwo.mag = struct.mag / structtwo.mag;
+        end
+    else
+        if ~strcmp(structtwo.type, 'rectangular')
+            structtwo = convert(structtwo);
+        end
+        if ~strcmp(struct.type, 'rectangular')
+            struct = convert(struct);
+        end
+        if strcmp(operator, '+')
+            structtwo.real = struct.real + structtwo.real;
+        else
+            if struct.sub == 0
+                structtwo.real = struct.real + structtwo.real;
+            else
+                structtwo.real = struct.real - structtwo.real;
+            end
+        end
+        if struct.sub == 0
+            structtwo.imag = struct.imag + structtwo.imag; %if the negative is not followed by parenthesis
+        else
+            structtwo.imag = struct.imag - structtwo.imag;
+        end
+    end
+end
+w=1;
+while length(structinposition) > 1 % continues until completely simplified
+    for k = 1:2:3    % once loop is finished it has checked for each operator for every index of structinposition
+        while w <= length(structinposition)-1 %goes through each struct
+            if struct(w).priority == currentpriority &&( strcmp(oper(k),operators(w)) || strcmp(oper(k+1), operators(w)))                
+                struct(w+1) = simplify(operators(w),struct(w),struct(w+1));
+                struct(w) = [];
+                operators(w) = [];
+                structinposition(w) = [];
+                w=w-1;
+            end
+            w=w+1;
+        
+        end
+        w=1;
+    end
+    currentpriority = currentpriority -1; % reduces current priority by one
+end
+struct(1).priority = 0;
 disp(struct(1))
